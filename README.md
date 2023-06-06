@@ -1,2 +1,2 @@
-# Compiladorer
+# Compiladores
 Proyecto compiladores
