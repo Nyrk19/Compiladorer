@@ -2,7 +2,9 @@ import tkinter as tk
 import re
 
 current_token = 0
-tokens =""
+error_sintactico = False
+tabla=[]
+
 # Definición de patrones de expresiones regulares para los símbolos terminales
 token_patterns = [
     ('main', r'main'),
@@ -11,6 +13,7 @@ token_patterns = [
     ('{', r'\{'),
     ('}', r'\}'),
     ('imprimir', r'imprimir'),
+    ('sqrt', r'sqrt'),
     ('TipodeDato', r'int|float'),
     ('Id', r'[a-zA-Z][a-zA-Z0-9]*'),
     ('=', r'='),
@@ -28,6 +31,7 @@ def analisis_lexico(code):
     tokens = []
     position = 0
     code_length = len(code)
+    error_lexico = False
 
     while position < code_length:
         current_char = code[position]
@@ -51,10 +55,14 @@ def analisis_lexico(code):
 
         if not matched:
             invalid_char = code[position]
-            raise ValueError('Caracter inválido en la posición {}: {}'.format(position, repr(invalid_char)))
+            escribir_tx2(f"Carácter inválido en la posición {position}: {repr(invalid_char)}\n")
+            error_lexico = True
+            break
 
         position += 1
 
+    if error_lexico:
+        return []
     return tokens
 
 # Verifica si el token actual coincide con el tipo esperado
@@ -63,16 +71,18 @@ def match(expected_token):
     if current_token < len(tokens) and tokens[current_token][0] == expected_token:
         current_token += 1
     else:
-        raise ValueError('Error de sintaxis. Se esperaba "{}" en la posición {}: {}'.format(
+        escribir_tx2('Error de sintaxis. Se esperaba "{}" en la posición {}: {}\n'.format(
             expected_token, current_token, tokens[current_token] if current_token < len(tokens) else 'EOF'))
+        error_sintactico = True
 
 # Función para el análisis sintáctico
 def analisis_sintactico(tokens):
-    global current_token
+    global current_token, error_sintactico
+    error_sintactico = False
     # Índice del token actual
     current_token = 0
 
-    # Programa -> int main(){ Declaracion AsigOImprimit}
+    # Programa -> int main(){ Declaracion AsigOImprimitOSqrt}
     if tokens[current_token][0] == 'TipodeDato':
         match('TipodeDato')
     match('main')
@@ -80,15 +90,17 @@ def analisis_sintactico(tokens):
     match(')')
     match('{')
     parse_declaracion()
-    parse_asigOimpimir()
+    parse_asigOimpimirOsqrt()
     match('}')
 
     # Verifica si se han procesado todos los tokens
     if current_token < len(tokens):
-        raise ValueError('ParseError de sintaxis. Token inesperado en la posición {}: {}'.format(
+        escribir_tx2('Error de sintaxis. Token inesperado en la posición {}: {}\n'.format(
             current_token, tokens[current_token]))
+        error_sintactico = True
 
-    print('Análisis sintáctico exitoso.')
+    if not error_sintactico:
+        escribir_tx2('Análisis sintáctico exitoso.\n')
 
 # Declaracion -> TipodeDato Asignacion | TipodeDato Id ; | ε
 def parse_declaracion():
@@ -102,23 +114,34 @@ def parse_declaracion():
             match(';')
             parse_declaracion()
 
-# AsigOImprimir -> Id Asignacion AsigOImprimir | Imprimir AsigOImprimir | ε
-def parse_asigOimpimir():
+# AsigOImprimirOSqrt -> Id Asignacion AsigOImprimir | Imprimir AsigOImprimir | ε
+def parse_asigOimpimirOsqrt():
     if tokens[current_token][0] == 'Id':
         parse_asignacion()
-        parse_asigOimpimir()
+        parse_asigOimpimirOsqrt()
     elif tokens[current_token][0] == 'imprimir':
         parse_imprimir()
-        parse_asigOimpimir()
+        parse_asigOimpimirOsqrt()
+    elif tokens[current_token][0] == 'sqrt':
+        parse_sqrt()
+        parse_asigOimpimirOsqrt()
 
-# Asignacion -> Id = Expresion ; Asignacion | ε
+# Sqrt -> sqrt(Expresion) | ε
+def parse_sqrt():
+    if tokens[current_token][0] == 'sqrt':
+        match('sqrt')
+        match('(')
+        parse_expresion()
+        match(')')
+        match(';')
+
+# Asignacion -> Id = Expresion ; | ε
 def parse_asignacion():
     if tokens[current_token][0] == 'Id':
         match('Id')
         match('=')
         parse_expresion()
         match(';')
-        parse_asignacion()
 
 # Expresion -> Termino Expresion'
 def parse_expresion():
@@ -163,8 +186,9 @@ def parse_factor():
     elif tokens[current_token][0] == 'Id':
         match('Id')
     else:
-        raise ValueError('ParseFactorError de sintaxis. Token inesperado en la posición {}: {}'.format(
+        escribir_tx2('Error de sintaxis. Token inesperado en la posición {}: {}\n'.format(
             current_token, tokens[current_token] if current_token < len(tokens) else 'EOF'))
+        error_sintactico = True
 
 # Imprimir -> imprimir ( Texto Texto' ) ;
 def parse_imprimir():
@@ -182,8 +206,9 @@ def parse_texto():
     elif tokens[current_token][0] == 'Id':
         match('Id')
     else:
-            print('ParseTextoError de sintaxis. Token inesperado en la posición {}: {}'.format(
+        escribir_tx2('Error de sintaxis. Token inesperado en la posición {}: {}\n'.format(
             current_token, tokens[current_token] if current_token < len(tokens) else 'EOF'))
+        error_sintactico = True
 
 # Texto' -> , Cadena Texto' | , Id Texto' | ε
 def parse_texto_prime():
@@ -198,8 +223,16 @@ def parse_texto_prime():
             parse_texto_prime()
             parse_texto_prime()
 
+def escribir_tx2(Text):
+    mensaje_text.config(state=tk.NORMAL)  # Habilitar la edición del segundo campo de texto
+    mensaje_text.insert(tk.END, Text)  # Agregar el nuevo mensaje
+    mensaje_text.config(state=tk.DISABLED)  # Volver a deshabilitar la edición del segundo campo de texto
+
 def compilar():
     global tokens
+    global tabla
+    cont=0
+    val = False
     texto = texto_entry.get("1.0", tk.END)  # Obtenertodo el texto
     texto = re.sub(r'\(', ' ( ', texto)
     texto = re.sub(r'\)', ' ) ', texto)
@@ -212,20 +245,34 @@ def compilar():
     texto = re.sub(r'\/', ' / ', texto)
     texto = re.sub(r'\=', ' = ', texto)
     texto = re.sub(r'\,', ' , ', texto)
-    mensaje_text.config(state=tk.NORMAL)  # Habilitar la edición del segundo campo de texto
     mensaje_text.delete("1.0", tk.END)  # Borrar el contenido anterior del mensaje
-    mensaje_text.insert(tk.END, "Iniciando el analisis...\n")  # Agregar el nuevo mensaje
-    mensaje_text.config(state=tk.DISABLED)  # Volver a deshabilitar la edición del segundo campo de texto
+    escribir_tx2("Iniciando analisis...\n")
     tokens = analisis_lexico(texto)
-    analisis_sintactico(tokens)
-    mensaje_text.config(state=tk.NORMAL)  # Habilitar la edición del segundo campo de texto
-    mensaje_text.insert(tk.END, "Termino el analisis\n")  # Agregar el nuevo mensaje
-    mensaje_text.config(state=tk.DISABLED)  # Volver a deshabilitar la edición del segundo campo de texto
+    if tokens:
+        for token in tokens:
+            if val and token[0] == 'Id':
+                valor2 = token[1]
+                registro = {'dato1': valor1, 'dato2': valor2, 'dato3': 0}
+                tabla.append(registro)
+                val = False
+            elif token[0] == 'TipodeDato':
+                val = True
+                valor1 = token[1]
+            cont = cont+1
+        analisis_sintactico(tokens)
+        if not error_sintactico:
+            escribir_tx2("Termino el analisis\n")
+            correr_button.config(state=tk.NORMAL)
+    print(tabla)
+
+def cambio_texto(event):
+    correr_button.config(state=tk.DISABLED)
 
 def correr():
-    mensaje_text.config(state=tk.NORMAL)  # Habilitar la edición del segundo campo de texto
-    mensaje_text.insert(tk.END, "Comienza a correr el codigo")  # Agregar el nuevo mensaje
-    mensaje_text.config(state=tk.DISABLED)  # Volver a deshabilitar la edición del segundo campo de texto
+    if correr_button["state"] == tk.NORMAL:
+        mensaje_text.config(state=tk.NORMAL)
+        mensaje_text.insert(tk.END, "\nComienza a correr el programa:\n")
+        mensaje_text.config(state=tk.DISABLED)
 
 def click(event):
     event.widget.config(relief=tk.SUNKEN)
@@ -303,12 +350,14 @@ guardar_button.bind("<Enter>", oscurecer)
 guardar_button.bind("<Leave>", restaurar)
 
 # Crear un botón para correr el código
-correr_button = tk.Button(marco_botones, text="Correr", font=("Arial Rounded MT Bold", 12), command=correr, relief=tk.RAISED, bd=2)
+correr_button = tk.Button(marco_botones, text="Correr", font=("Arial Rounded MT Bold", 12), command=correr, relief=tk.RAISED, bd=2, state=tk.DISABLED)
 correr_button.pack(side=tk.LEFT, padx=5)
 correr_button.bind("<Button-1>", click)
 correr_button.bind("<ButtonRelease-1>", liberar)
 correr_button.bind("<Enter>", oscurecer)
 correr_button.bind("<Leave>", restaurar)
+
+ventana.bind("<Key>",cambio_texto)
 
 # Ejecutar el bucle principal de la ventana
 ventana.mainloop()
