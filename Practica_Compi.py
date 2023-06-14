@@ -21,7 +21,7 @@ token_patterns = [
     ('Id', r'[a-zA-Z][a-zA-Z0-9]*'),
     ('=', r'='),
     (',', r','),
-    ('Numero', r'\d+'),
+    ('Numero', r'\d+(\.\d+)?'),
     ('Cadena', r'"([^"\\]|\\.)*"'),
     ('+', r'\+'),
     ('-', r'-'),
@@ -111,14 +111,26 @@ def buscar_valor_id(id):
 def actualizar_valor_id(id, valor):
     for registro in tabla:
         if registro['dato2'] == id:
-            registro['dato3'] = valor
+            if registro['dato1'] == 'int':
+                registro['dato3'] = int(valor)
+            else:
+                registro['dato3'] = valor
             break
+
+def is_float(string):
+    try:
+        float(string)
+        return True
+    except ValueError:
+        return False
 
 def procesar_asignacion(id, valor):
     global error_semantico
     valor_numerico = None
     if str(valor).isdigit():
         valor_numerico = int(valor)
+    elif is_float(str(valor)):
+        valor_numerico = float(valor)
     else:
         valor_id = buscar_valor_id(valor)
         if valor_id is not None:
@@ -232,7 +244,10 @@ def parse_termino_prime(acumulador):
 def parse_factor():
     global error_sintactico, error_semantico
     if tokens[current_token][0] == 'Numero':
-        numero = int(tokens[current_token][1])
+        if tokens[current_token][1].isdigit():
+            numero = int(tokens[current_token][1])
+        elif is_float(tokens[current_token][1]):
+            numero = float(tokens[current_token][1])
         match('Numero')
         return numero
     elif tokens[current_token][0] == '(':
@@ -298,6 +313,7 @@ def parse_texto_prime():
         match(',')
         if tokens[current_token][0] == 'Cadena':
             texto = tokens[current_token][1]
+            texto = texto.replace('"', '')
             match('Cadena')
             texto = texto + str(parse_texto_prime())
             return texto
@@ -346,7 +362,10 @@ def compilar():
         for token in tokens:
             if val and token[0] == 'Id':
                 valor2 = token[1]
-                registro = {'dato1': valor1, 'dato2': valor2, 'dato3': 0}
+                if valor1 == float:
+                    registro = {'dato1': valor1, 'dato2': valor2, 'dato3': 0.0}
+                else:
+                    registro = {'dato1': valor1, 'dato2': valor2, 'dato3': 0}
                 tabla.append(registro)
                 val = False
             elif token[0] == 'TipodeDato':
