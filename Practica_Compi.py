@@ -1,9 +1,12 @@
 import tkinter as tk
 import re
+import math
 
 current_token = 0
 error_sintactico = False
-tabla=[]
+error_semantico = False
+tabla = []
+lista_impresion = []
 
 # Definición de patrones de expresiones regulares para los símbolos terminales
 token_patterns = [
@@ -67,7 +70,7 @@ def analisis_lexico(code):
 
 # Verifica si el token actual coincide con el tipo esperado
 def match(expected_token):
-    global current_token
+    global current_token, error_sintactico
     if current_token < len(tokens) and tokens[current_token][0] == expected_token:
         current_token += 1
     else:
@@ -90,7 +93,7 @@ def analisis_sintactico(tokens):
     match(')')
     match('{')
     parse_declaracion()
-    parse_asigOimpimirOsqrt()
+    parse_asigOimprimirOsqrt()
     match('}')
 
     # Verifica si se han procesado todos los tokens
@@ -99,8 +102,46 @@ def analisis_sintactico(tokens):
             current_token, tokens[current_token]))
         error_sintactico = True
 
-    if not error_sintactico:
-        escribir_tx2('Análisis sintáctico exitoso.\n')
+def buscar_valor_id(id):
+    for registro in tabla:
+        if registro['dato2'] == id:
+            return registro['dato3']
+    return None
+
+def actualizar_valor_id(id, valor):
+    for registro in tabla:
+        if registro['dato2'] == id:
+            registro['dato3'] = valor
+            break
+
+def procesar_asignacion(id, valor):
+    global error_semantico
+    valor_numerico = None
+    if str(valor).isdigit():
+        valor_numerico = int(valor)
+    else:
+        valor_id = buscar_valor_id(valor)
+        if valor_id is not None:
+            valor_numerico = valor_id
+
+    if valor_numerico is not None:
+        actualizar_valor_id(id, valor_numerico)
+    else:
+        escribir_tx2(f'Error semántico asignacion: El valor de la variable "{valor}" no está definido.')
+        error_semantico = True
+
+def procesar_sqrt(id):
+    global error_semantico
+    valor_id = buscar_valor_id(id)
+    if valor_id is not None:
+        raiz = math.sqrt(valor_id)
+        actualizar_valor_id(id, raiz)
+    else:
+        escribir_tx2(f'Error semántico sqrt: El valor de la variable "{id}" no está definido.')
+        error_semantico = True
+
+def procesar_imprimir(texto):
+    lista_impresion.append(texto)
 
 # Declaracion -> TipodeDato Asignacion | TipodeDato Id ; | ε
 def parse_declaracion():
@@ -114,114 +155,165 @@ def parse_declaracion():
             match(';')
             parse_declaracion()
 
-# AsigOImprimirOSqrt -> Id Asignacion AsigOImprimir | Imprimir AsigOImprimir | ε
-def parse_asigOimpimirOsqrt():
+# AsigOImprimirOSqrt -> Id Asignacion AsigOImprimir | Imprimir AsigOImprimir | Sqrt AsigOImprimir | ε
+def parse_asigOimprimirOsqrt():
     if tokens[current_token][0] == 'Id':
         parse_asignacion()
-        parse_asigOimpimirOsqrt()
+        parse_asigOimprimirOsqrt()
     elif tokens[current_token][0] == 'imprimir':
         parse_imprimir()
-        parse_asigOimpimirOsqrt()
+        parse_asigOimprimirOsqrt()
     elif tokens[current_token][0] == 'sqrt':
         parse_sqrt()
-        parse_asigOimpimirOsqrt()
+        parse_asigOimprimirOsqrt()
 
-# Sqrt -> sqrt(Expresion) | ε
+# Sqrt -> sqrt(Id) ;
 def parse_sqrt():
     if tokens[current_token][0] == 'sqrt':
         match('sqrt')
         match('(')
-        parse_expresion()
+        id = tokens[current_token][1]
+        match('Id')
         match(')')
         match(';')
+        procesar_sqrt(id)
 
-# Asignacion -> Id = Expresion ; | ε
+# Asignacion -> Id = Expresion ;
 def parse_asignacion():
     if tokens[current_token][0] == 'Id':
+        id = tokens[current_token][1]
         match('Id')
         match('=')
-        parse_expresion()
+        expresion = parse_expresion()
         match(';')
+        procesar_asignacion(id, expresion)
 
 # Expresion -> Termino Expresion'
 def parse_expresion():
-    parse_termino()
-    parse_expresion_prime()
+    resultado = parse_termino()
+    return parse_expresion_prime(resultado)
 
 # Expresion' -> + Termino Expresion' | - Termino Expresion' | ε
-def parse_expresion_prime():
+def parse_expresion_prime(acumulador):
     if tokens[current_token][0] == '+':
         match('+')
-        parse_termino()
-        parse_expresion_prime()
+        termino = parse_termino()
+        return parse_expresion_prime(acumulador + termino)
     elif tokens[current_token][0] == '-':
         match('-')
-        parse_termino()
-        parse_expresion_prime()
+        termino = parse_termino()
+        return parse_expresion_prime(acumulador - termino)
+    else:
+        return acumulador
 
 # Termino -> Factor Termino'
 def parse_termino():
-    parse_factor()
-    parse_termino_prime()
+    resultado = parse_factor()
+    return parse_termino_prime(resultado)
 
 # Termino' -> * Factor Termino' | / Factor Termino' | ε
-def parse_termino_prime():
+def parse_termino_prime(acumulador):
     if tokens[current_token][0] == '*':
         match('*')
-        parse_factor()
-        parse_termino_prime()
+        factor = parse_factor()
+        return parse_termino_prime(acumulador * factor)
     elif tokens[current_token][0] == '/':
         match('/')
-        parse_factor()
-        parse_termino_prime()
+        factor = parse_factor()
+        if factor != 0:
+            return parse_termino_prime(acumulador / factor)
+        else:
+            escribir_tx2('Error semántico: División por cero.')
+            return acumulador
+    else:
+        return acumulador
 
 # Factor -> Numero | ( Expresion ) | Id
 def parse_factor():
+    global error_sintactico, error_semantico
     if tokens[current_token][0] == 'Numero':
+        numero = int(tokens[current_token][1])
         match('Numero')
+        return numero
     elif tokens[current_token][0] == '(':
         match('(')
-        parse_expresion()
+        expresion = parse_expresion()
         match(')')
+        return expresion
     elif tokens[current_token][0] == 'Id':
+        id = tokens[current_token][1]
         match('Id')
+        valor_id = buscar_valor_id(id)
+        if valor_id is not None:
+            return valor_id
+        else:
+            escribir_tx2(f'Error semántico parse_factor: El valor de la variable "{id}" no está definido.')
+            error_semantico = True
+            return 0
     else:
         escribir_tx2('Error de sintaxis. Token inesperado en la posición {}: {}\n'.format(
             current_token, tokens[current_token] if current_token < len(tokens) else 'EOF'))
         error_sintactico = True
+        return 0
 
 # Imprimir -> imprimir ( Texto Texto' ) ;
 def parse_imprimir():
     match('imprimir')
     match('(')
-    parse_texto()
-    parse_texto_prime()
+    texto = parse_texto()
+    texto = texto + str(parse_texto_prime())
     match(')')
     match(';')
+    procesar_imprimir(texto)
 
 # Texto -> Cadena | Id
 def parse_texto():
+    global error_sintactico, error_semantico
     if tokens[current_token][0] == 'Cadena':
+        texto = tokens[current_token][1]
+        texto = texto.replace('"', '')
         match('Cadena')
+        return texto
     elif tokens[current_token][0] == 'Id':
+        texto = tokens[current_token][1]
         match('Id')
+        if buscar_valor_id(texto) is None:
+            escribir_tx2(f'Error semántico parse_texto: El valor de la variable "{id}" no está definido.')
+            error_semantico = True
+        for registro in tabla:
+            id = registro['dato2']
+            valor = registro['dato3']
+            texto = texto.replace(id, str(valor))
+        return texto
     else:
         escribir_tx2('Error de sintaxis. Token inesperado en la posición {}: {}\n'.format(
             current_token, tokens[current_token] if current_token < len(tokens) else 'EOF'))
         error_sintactico = True
+        return ''
 
 # Texto' -> , Cadena Texto' | , Id Texto' | ε
 def parse_texto_prime():
+    global error_semantico
     if tokens[current_token][0] == ',':
         match(',')
         if tokens[current_token][0] == 'Cadena':
+            texto = tokens[current_token][1]
             match('Cadena')
-            parse_texto_prime()
-            parse_texto_prime()
+            texto = texto + str(parse_texto_prime())
+            return texto
         elif tokens[current_token][0] == 'Id':
+            texto = tokens[current_token][1]
             match('Id')
-            parse_texto_prime()
-            parse_texto_prime()
+            if buscar_valor_id(texto) is None:
+                escribir_tx2(f'Error semántico parse_texto: El valor de la variable "{id}" no está definido.')
+                error_semantico = True
+            for registro in tabla:
+                id = registro['dato2']
+                valor = registro['dato3']
+                texto = texto.replace(id, str(valor))
+            texto = texto + str(parse_texto_prime())
+            return texto
+    return ''
 
 def escribir_tx2(Text):
     mensaje_text.config(state=tk.NORMAL)  # Habilitar la edición del segundo campo de texto
@@ -229,9 +321,9 @@ def escribir_tx2(Text):
     mensaje_text.config(state=tk.DISABLED)  # Volver a deshabilitar la edición del segundo campo de texto
 
 def compilar():
-    global tokens
-    global tabla
-    cont=0
+    global tokens, tabla, lista_impresion
+    lista_impresion = []
+    tabla = []
     val = False
     texto = texto_entry.get("1.0", tk.END)  # Obtenertodo el texto
     texto = re.sub(r'\(', ' ( ', texto)
@@ -245,10 +337,12 @@ def compilar():
     texto = re.sub(r'\/', ' / ', texto)
     texto = re.sub(r'\=', ' = ', texto)
     texto = re.sub(r'\,', ' , ', texto)
-    mensaje_text.delete("1.0", tk.END)  # Borrar el contenido anterior del mensaje
+    mensaje_text.config(state=tk.NORMAL)  # Habilitar la edición del segundo campo de texto
+    mensaje_text.delete("1.0", tk.END)# Borrar el contenido anterior del mensaje
     escribir_tx2("Iniciando analisis...\n")
     tokens = analisis_lexico(texto)
     if tokens:
+        escribir_tx2("    Analisis lexico completado\n")
         for token in tokens:
             if val and token[0] == 'Id':
                 valor2 = token[1]
@@ -258,21 +352,22 @@ def compilar():
             elif token[0] == 'TipodeDato':
                 val = True
                 valor1 = token[1]
-            cont = cont+1
         analisis_sintactico(tokens)
-        if not error_sintactico:
+        if not error_sintactico and not error_semantico:
+            escribir_tx2("    Analisis sintactico completado\n")
+            escribir_tx2("    Analisis semantico completado\n")
             escribir_tx2("Termino el analisis\n")
             correr_button.config(state=tk.NORMAL)
-    print(tabla)
 
 def cambio_texto(event):
     correr_button.config(state=tk.DISABLED)
 
 def correr():
     if correr_button["state"] == tk.NORMAL:
-        mensaje_text.config(state=tk.NORMAL)
-        mensaje_text.insert(tk.END, "\nComienza a correr el programa:\n")
-        mensaje_text.config(state=tk.DISABLED)
+        escribir_tx2("\nComienza a correr el programa:\n")
+        for impresion in lista_impresion:
+            mensaje = impresion + "\n"
+            escribir_tx2(mensaje)
 
 def click(event):
     event.widget.config(relief=tk.SUNKEN)

@@ -4,12 +4,12 @@ Proyecto compiladores
 Ejemplo de codigo aceptado:
 
 int main(){
-    int x ;
-    float y=2 ;
-    x = y;
-    x=10+y*(5-3)/2;
-    y=10+y*(5-3)/2;
+    int x = 5 + 3;
+    float y = 5;
+    imprimir("El valor de x es: ", x);
+    imprimir("El valor de y es: ", y);
+    x = x + 1;
     sqrt(y);
-    sqrt(x);
-    imprimir("Hola mundo",x,y);
+    imprimir("El nuevo valor de x es: ", x);
+    imprimir("El nuevo valor de y es: ", y);
 }
